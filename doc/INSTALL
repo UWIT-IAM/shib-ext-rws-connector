@@ -1,0 +1,117 @@
+INSTALLATION
+===========
+
+This version of the connector is for shib version 2.3.x
+
+
+1) Add the extension project jar and all its dependencies from the extension lib directory to the IdP source
+   distribution's lib directory. (will end up in idp.war)
+
+   You need  httpclient-4.1.3.jar and httpcore-4.1.4.jar
+
+
+2) Re-run the IdP install script to build and deploy the new WAR file.
+
+
+CONFIGURATION
+=============
+
+In the IdP's conf/attribute-resolver.xml
+
+1) add a namespace declaration to the document root element:
+
+      xmlns:uwdc="urn:mace:washington.edu:idp:resolver:dc"
+
+2) add an xsi:schemaLocation pair in the document root element:
+
+      urn:mace:washington.edu:idp:resolver:dc classpath:/schema/uw-data-connector.xsd
+
+
+3) add a 'WebService' data connector definition 
+
+  (example, see below for element details) 
+
+  [[ most attributes and elements are similar to ldap connector ]]
+
+  This example retrieves group memberships from our web service
+        see: https://wiki.cac.washington.edu/x/HiFy 
+
+------------------------------------------------------------------------
+    <resolver:DataConnector xsi:type="WebService" id="gws" xmlns="urn:mace:washington.edu:idp:resolver:dc"
+           authenticationType="CLIENT_CERT"
+           baseURL="https://iam-ws.u.washington.edu:7443/"
+           maxConnections="5"
+           maxResultSize="100"
+           mergeResults="true"
+           cacheResults="false"
+           username="user"
+           password="pass">
+
+        <QueryTemplate> 
+            <![CDATA[
+               group_sws/v1/search?member=${requestContext.principalName}&type=effective
+            ]]>
+        </QueryTemplate>
+
+        <uwdc:TrustCredential xsi:type="X509Filesystem" xmlns="urn:mace:shibboleth:2.0:security" id="UWCACredential">
+            <Certificate>/data/local/idp/credentials/uwca.crt</Certificate>
+        </uwdc:TrustCredential>
+        <uwdc:AuthenticationCredential xsi:type="X509Filesystem" xmlns="urn:mace:shibboleth:2.0:security" id="Urizen3Credential">
+           <PrivateKey>/data/local/idp/credentials/urizen3.ck</PrivateKey>
+           <Certificate>/data/local/idp/credentials/urizen3.ck</Certificate>
+        </uwdc:AuthenticationCredential>
+
+        <Attribute name="memberOf" xPath="//*[@class='name']" />
+
+        <ActivationRequirement entityId="https://urizen2.cac.washington.edu/shibboleth" />
+        <ActivationRequirement file="/opt/shibboleth/conf/gws-activators.xml" />
+
+    </resolver:DataConnector>
+------------------------------------------------------------------------
+
+
+
+  a) authenticationType: can be NONE, BASIC, CLIENT_CERT
+
+     if BASIC you must supply username and password
+     if CLIENT_CERT you must supply AuthenticationCredential
+
+
+  b) The "baseURL" + "QueryTemplate" form the URL for the GET request
+
+
+  c) You can have as many "Attribute" elements as you like.  
+     Each retrieves one set of attributes from the returned document
+
+     The "name" is what you put in an attribute definition's sourceAttributeID.
+
+     The "xPath" is an XPath expression that identifies the elements 
+     containing data for "name".
+ 
+     You can include "maxResultSize" and "noResultIsError" attributes
+     in the Attribute element.
+
+
+  d) The "ActivationRequirement" are optional. 
+
+     You can specify as many as you like with "entityId".  Each
+     identifies a service provider that activates the data connector.
+
+     You can specify one with "file".  The file contains a block of
+     similar xml:
+
+        <ActivationRequirements>
+          <ActivationRequirement entityId="some_entity" />
+          <ActivationRequirement entityId="some_other_entity" />
+          ...
+        </ActivationRequirements>
+           
+     The connector will reread the file if it changes.  This allows 
+     you to add and remove SPs without restarting the IdP.
+
+     If an SP's entityId is not listed directly or in the file this
+     connector does nothing.  If there are no ActivationRequirement
+     elements the connector is always active.
+
+
+
